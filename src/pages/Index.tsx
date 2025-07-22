@@ -4,12 +4,16 @@ import { PriceChart } from "@/components/PriceChart";
 import { EquilibriumStats } from "@/components/EquilibriumStats";
 import { TechnicalIndicators } from "@/components/TechnicalIndicators";
 import { TradingDecisionPanel } from "@/components/TradingDecisionPanel";
+import { TradingSignalsInterface } from "@/components/TradingSignalsInterface";
+import { HistoricalBacktester } from "@/components/HistoricalBacktester";
 import { useCryptoData } from "@/hooks/useCryptoData";
 import { Toaster } from "@/components/ui/toaster";
-import { TrendingUp, Database } from "lucide-react";
+import { TrendingUp, Database, Activity, BarChart3 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Index = () => {
   const [selectedCrypto, setSelectedCrypto] = useState("BTC");
+  const [activeTab, setActiveTab] = useState("analysis");
   const { data, currentPrice, isLoading, error } = useCryptoData(selectedCrypto);
 
   return (
@@ -25,31 +29,52 @@ const Index = () => {
                 <TrendingUp className="w-8 h-8 text-primary" />
               </div>
               <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
-                Crypto Equilibrium
+                Crypto Trading Hub
               </h1>
             </div>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Advanced cryptocurrency price analysis with 90-day historical data and equilibrium calculations
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto leading-relaxed">
+              Advanced cryptocurrency analysis with equilibrium pricing, technical indicators, and real-time trading signals.
             </p>
+            
+            {/* Navigation Tabs */}
+            <div className="mt-8">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+                <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-3">
+                  <TabsTrigger value="analysis" className="flex items-center gap-2">
+                    <Database className="w-4 h-4" />
+                    Analysis
+                  </TabsTrigger>
+                  <TabsTrigger value="signals" className="flex items-center gap-2">
+                    <Activity className="w-4 h-4" />
+                    Live Signals
+                  </TabsTrigger>
+                  <TabsTrigger value="backtest" className="flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" />
+                    Historical Backtest
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
           </div>
 
           {/* Main Dashboard */}
-          <div className="space-y-8">
-            {/* Crypto Selector */}
-            <CryptoSelector 
-              selectedCrypto={selectedCrypto} 
-              onCryptoChange={setSelectedCrypto}
-            />
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsContent value="analysis" className="space-y-8">
+              {/* Crypto Selector */}
+              <CryptoSelector 
+                selectedCrypto={selectedCrypto} 
+                onCryptoChange={setSelectedCrypto}
+              />
 
-            {/* Error State */}
-            {error && (
-              <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
-                <div className="flex items-center gap-2 text-destructive">
-                  <Database className="w-5 h-5" />
-                  <span className="font-medium">Data Error: {error}</span>
+              {/* Error State */}
+              {error && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <Database className="w-5 h-5" />
+                    <span className="font-medium">Data Error: {error}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <PriceChart
@@ -101,24 +126,33 @@ const Index = () => {
               <EquilibriumStats data={data} currentPrice={currentPrice} cryptoSymbol={selectedCrypto} />
             </div>
             
-            {/* Trading Decision Analysis */}
-            <div className="mt-8">
-              <TradingDecisionPanel 
-                data={data || []} 
-                currentPrice={currentPrice || 0} 
-                cryptoSymbol={selectedCrypto} 
-              />
-            </div>
-            
-            <TechnicalIndicators data={data} />
-          </div>
+              {/* Trading Decision Analysis */}
+              <div className="mt-8">
+                <TradingDecisionPanel 
+                  data={data || []} 
+                  currentPrice={currentPrice || 0} 
+                  cryptoSymbol={selectedCrypto} 
+                />
+              </div>
+              
+              <TechnicalIndicators data={data} />
+            </TabsContent>
+
+            <TabsContent value="signals" className="space-y-8">
+              <TradingSignalsInterface />
+            </TabsContent>
+
+            <TabsContent value="backtest" className="space-y-8">
+              <HistoricalBacktester />
+            </TabsContent>
+          </Tabs>
 
           {/* Footer Info */}
           <div className="mt-12 pt-8 border-t border-border">
             <div className="text-center text-sm text-muted-foreground">
               <p>Data provided by Binance API • Cached for 10 minutes to reduce API calls</p>
               <p className="mt-1">
-                Equilibrium price calculated as the average closing price over the specified period
+                Real-time trading signals with 9 advanced technical indicators
               </p>
             </div>
           </div>

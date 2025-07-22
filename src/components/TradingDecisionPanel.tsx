@@ -122,6 +122,98 @@ const calculateCCI = (data: PriceData[], period: number = 20): number => {
   return (currentTP - sma) / (0.015 * meanDeviation);
 };
 
+// --- Additional High-Accuracy Indicators ---
+// Stochastic RSI
+const calculateStochasticRSI = (prices: number[], rsiPeriod: number = 14, stochPeriod: number = 14): number => {
+  if (prices.length < rsiPeriod + stochPeriod) return 50;
+  const rsiSeries: number[] = [];
+  for (let i = rsiPeriod; i <= prices.length; i++) {
+    const slice = prices.slice(i - rsiPeriod, i);
+    rsiSeries.push(calculateRSI(slice, rsiPeriod));
+  }
+  const recent = rsiSeries.slice(-stochPeriod);
+  const minRsi = Math.min(...recent);
+  const maxRsi = Math.max(...recent);
+  if (maxRsi === minRsi) return 50;
+  const currentRsi = recent[recent.length - 1];
+  return ((currentRsi - minRsi) / (maxRsi - minRsi)) * 100;
+};
+
+// Average Directional Index (ADX)
+const calculateADX = (data: PriceData[], period: number = 14): { adx: number; plusDI: number; minusDI: number } => {
+  if (data.length < period + 1) return { adx: 0, plusDI: 0, minusDI: 0 };
+  let trSum = 0, plusDmSum = 0, minusDmSum = 0;
+  for (let i = data.length - period; i < data.length; i++) {
+    const curr = data[i];
+    const prev = data[i - 1];
+    const currHigh = curr.high ?? curr.price ?? 0;
+    const currLow = curr.low ?? curr.price ?? 0;
+    const prevClose = prev.close ?? prev.price ?? 0;
+
+    const tr = Math.max(
+      currHigh - currLow,
+      Math.abs(currHigh - prevClose),
+      Math.abs(currLow - prevClose)
+    );
+
+    const upMove = currHigh - (prev.high ?? prev.price ?? 0);
+    const downMove = (prev.low ?? prev.price ?? 0) - currLow;
+
+    const plusDM = (upMove > downMove && upMove > 0) ? upMove : 0;
+    const minusDM = (downMove > upMove && downMove > 0) ? downMove : 0;
+
+    trSum += tr;
+    plusDmSum += plusDM;
+    minusDmSum += minusDM;
+  }
+
+  if (trSum === 0) return { adx: 0, plusDI: 0, minusDI: 0 };
+  const plusDI = (plusDmSum / trSum) * 100;
+  const minusDI = (minusDmSum / trSum) * 100;
+  const dx = (Math.abs(plusDI - minusDI) / (plusDI + minusDI)) * 100 || 0;
+  return { adx: dx, plusDI, minusDI };
+};
+
+// On-Balance Volume (OBV)
+const calculateOBV = (data: PriceData[]): { obv: number, obvSma: number } => {
+  if (data.length < 2) return { obv: 0, obvSma: 0 };
+  let obv = 0;
+  const obvSeries: number[] = [];
+  for (let i = 1; i < data.length; i++) {
+    const currentClose = data[i].close ?? data[i].price ?? 0;
+    const prevClose = data[i-1].close ?? data[i-1].price ?? 0;
+    const volume = data[i].volume ?? 0;
+    if (currentClose > prevClose) {
+      obv += volume;
+    } else if (currentClose < prevClose) {
+      obv -= volume;
+    }
+    obvSeries.push(obv);
+  }
+  const recentObv = obvSeries.slice(-20);
+  const obvSma = recentObv.reduce((a, b) => a + b, 0) / recentObv.length;
+  return { obv, obvSma };
+};
+
+// Aroon Indicator
+const calculateAroon = (data: PriceData[], period: number = 25): { up: number; down: number } => {
+  if (data.length < period) return { up: 0, down: 0 };
+  const slice = data.slice(-period);
+  const highPrices = slice.map(d => d.high ?? d.price ?? 0);
+  const lowPrices = slice.map(d => d.low ?? d.price ?? 0);
+  
+  const highestHigh = Math.max(...highPrices);
+  const lowestLow = Math.min(...lowPrices);
+
+  const daysSinceHigh = highPrices.slice().reverse().indexOf(highestHigh);
+  const daysSinceLow = lowPrices.slice().reverse().indexOf(lowestLow);
+
+  const up = ((period - daysSinceHigh) / period) * 100;
+  const down = ((period - daysSinceLow) / period) * 100;
+
+  return { up, down };
+};
+
 export const TradingDecisionPanel: React.FC<TradingDecisionPanelProps> = ({ data, currentPrice, cryptoSymbol }) => {
   if (!data || data.length === 0) return null;
 
@@ -142,9 +234,15 @@ export const TradingDecisionPanel: React.FC<TradingDecisionPanelProps> = ({ data
   const bb = calculateBollingerBands(prices);
   const williamsR = calculateWilliamsR(data);
   const cci = calculateCCI(data);
+
+  // High-accuracy indicators
+  const stochRsi = calculateStochasticRSI(prices);
+  const { adx, plusDI, minusDI } = calculateADX(data);
+  const { obv, obvSma } = calculateOBV(data);
+  const aroon = calculateAroon(data);
   
   // Debug: Log calculated values
-  console.log('Indicators:', { rsi, macd, bb, williamsR, cci });
+  console.log('Indicators:', { rsi, macd, bb, williamsR, cci, stochRsi, adx, obv, aroon });
 
   // Decision Logic Based on Scientific Research
   const getSignalStrength = (indicator: string, value: number): { signal: 'BUY' | 'SELL' | 'NEUTRAL'; strength: number; color: string } => {
@@ -174,6 +272,21 @@ export const TradingDecisionPanel: React.FC<TradingDecisionPanelProps> = ({ data
         if (value > 100) return { signal: 'SELL', strength: Math.min(80, (value - 100) / 2), color: 'text-red-500' };
         return { signal: 'NEUTRAL', strength: 0, color: 'text-yellow-500' };
       
+      case 'StochRSI':
+        if (value < 20) return { signal: 'BUY', strength: Math.min(80, (20 - value) * 2), color: 'text-green-500' };
+        if (value > 80) return { signal: 'SELL', strength: Math.min(80, (value - 80) * 2), color: 'text-red-500' };
+        return { signal: 'NEUTRAL', strength: 0, color: 'text-yellow-500' };
+
+      case 'OBV':
+        if (obv > obvSma) return { signal: 'BUY', strength: 60, color: 'text-green-500' };
+        if (obv < obvSma) return { signal: 'SELL', strength: 60, color: 'text-red-500' };
+        return { signal: 'NEUTRAL', strength: 0, color: 'text-yellow-500' };
+
+      case 'Aroon':
+        if (aroon.up > aroon.down && aroon.up > 70) return { signal: 'BUY', strength: aroon.up, color: 'text-green-500' };
+        if (aroon.down > aroon.up && aroon.down > 70) return { signal: 'SELL', strength: aroon.down, color: 'text-red-500' };
+        return { signal: 'NEUTRAL', strength: 0, color: 'text-yellow-500' };
+      
       default:
         return { signal: 'NEUTRAL', strength: 0, color: 'text-gray-500' };
     }
@@ -184,9 +297,21 @@ export const TradingDecisionPanel: React.FC<TradingDecisionPanelProps> = ({ data
   const bbSignal = getSignalStrength('BB', currentPrice);
   const williamsSignal = getSignalStrength('Williams%R', williamsR);
   const cciSignal = getSignalStrength('CCI', cci);
+const stochSignal = getSignalStrength('StochRSI', stochRsi);
+
+// ADX derived signal
+let adxSignal: { signal: 'BUY' | 'SELL' | 'NEUTRAL'; strength: number; color: string } = { signal: 'NEUTRAL', strength: 0, color: 'text-yellow-500' };
+if (adx > 25) {
+  if (plusDI > minusDI) adxSignal = { signal: 'BUY', strength: Math.min(100, adx), color: 'text-green-500' };
+  else if (minusDI > plusDI) adxSignal = { signal: 'SELL', strength: Math.min(100, adx), color: 'text-red-500' };
+}
+
+const obvSignal = getSignalStrength('OBV', obv);
+const aroonSignal = getSignalStrength('Aroon', 0); // Value is unused here, logic is internal
+
 
   // Overall Decision (Weighted Average)
-  const signals = [rsiSignal, macdSignal, bbSignal, williamsSignal, cciSignal];
+  const signals = [rsiSignal, macdSignal, bbSignal, williamsSignal, cciSignal, stochSignal, adxSignal, obvSignal, aroonSignal];
   const buySignals = signals.filter(s => s.signal === 'BUY');
   const sellSignals = signals.filter(s => s.signal === 'SELL');
   
@@ -342,6 +467,66 @@ export const TradingDecisionPanel: React.FC<TradingDecisionPanelProps> = ({ data
           <p className={`text-2xl font-bold ${cciSignal.color}`}>{cci.toFixed(0)}</p>
           <p className="text-xs text-muted-foreground mt-1">
             {cci < -100 ? 'Oversold condition' : cci > 100 ? 'Overbought condition' : 'Normal range'}
+          </p>
+        </div>
+
+        {/* Stochastic RSI */}
+        <div className="p-4 rounded-lg bg-background border">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm">Stochastic RSI</h4>
+            <Badge variant={stochSignal.signal === 'BUY' ? 'default' : stochSignal.signal === 'SELL' ? 'destructive' : 'secondary'}>
+              {stochSignal.signal}
+            </Badge>
+          </div>
+          <p className={`text-2xl font-bold ${stochSignal.color}`}>{stochRsi.toFixed(1)}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {stochRsi < 20 ? 'Oversold' : stochRsi > 80 ? 'Overbought' : 'Neutral'}
+          </p>
+        </div>
+
+        {/* ADX */}
+        <div className="p-4 rounded-lg bg-background border">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm">ADX (14)</h4>
+            <Badge variant={adxSignal.signal === 'BUY' ? 'default' : adxSignal.signal === 'SELL' ? 'destructive' : 'secondary'}>
+              {adxSignal.signal === 'NEUTRAL' ? 'TREND' : adxSignal.signal}
+            </Badge>
+          </div>
+          <p className={`text-2xl font-bold ${adxSignal.color}`}>{adx.toFixed(1)}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {adx < 20 ? 'Weak trend' : adx < 25 ? 'Potential trend' : 'Strong trend'}
+          </p>
+        </div>
+
+        {/* On-Balance Volume */}
+        <div className="p-4 rounded-lg bg-background border">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm">On-Balance Volume</h4>
+            <Badge variant={obvSignal.signal === 'BUY' ? 'default' : obvSignal.signal === 'SELL' ? 'destructive' : 'secondary'}>
+              {obvSignal.signal}
+            </Badge>
+          </div>
+          <p className={`text-2xl font-bold ${obvSignal.color}`}>
+            {obv > obvSma ? 'Trending Up' : 'Trending Down'}
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Volume confirms price trend
+          </p>
+        </div>
+
+        {/* Aroon Indicator */}
+        <div className="p-4 rounded-lg bg-background border">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-medium text-sm">Aroon (25)</h4>
+            <Badge variant={aroonSignal.signal === 'BUY' ? 'default' : aroonSignal.signal === 'SELL' ? 'destructive' : 'secondary'}>
+              {aroonSignal.signal}
+            </Badge>
+          </div>
+          <p className={`text-lg font-bold ${aroonSignal.color}`}>
+            Up: {aroon.up.toFixed(0)}% / Down: {aroon.down.toFixed(0)}%
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {aroon.up > 70 ? 'Strong uptrend' : aroon.down > 70 ? 'Strong downtrend' : 'Trend developing'}
           </p>
         </div>
 
