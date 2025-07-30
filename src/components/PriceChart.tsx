@@ -34,7 +34,7 @@ interface PriceChartProps {
 }
 
 // Custom tooltip component for the chart
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = ({ active, payload, label }: { active?: boolean; payload?: { payload: PriceData }[]; label?: string }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -74,7 +74,22 @@ const CandlestickChart = ({
   showCurrent,
   showHigh,
   showLow
-}: any) => {
+}: { 
+  data: PriceData[]; 
+  margin: { top: number; right: number; bottom: number; left: number }; 
+  equilibriumLevels: EquilibriumLevel[]; 
+  goldenRange?: [number, number]; 
+  premiumRange?: [number, number]; 
+  currentPrice?: number; 
+  highest?: number; 
+  lowest?: number;
+  showEquilibrium: boolean;
+  showGolden: boolean;
+  showPremium: boolean;
+  showCurrent: boolean;
+  showHigh: boolean;
+  showLow: boolean;
+}) => {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -93,7 +108,7 @@ const CandlestickChart = ({
   
   if (!data || data.length === 0) return null;
   
-  const prices = data.flatMap((d: any) => [d.high, d.low, d.open, d.close]);
+  const prices = data.flatMap((d: PriceData) => [d.high, d.low, d.open, d.close]);
   const minPrice = Math.min(...prices);
   const maxPrice = Math.max(...prices);
   const priceRange = maxPrice - minPrice;
@@ -165,7 +180,7 @@ const CandlestickChart = ({
         )}
         
         {/* Equilibrium Lines */}
-        {showEquilibrium && equilibriumLevels.map((eq: any, idx: number) => (
+        {showEquilibrium && equilibriumLevels.map((eq: EquilibriumLevel, idx: number) => (
           <g key={idx}>
             <line
               x1={0}
@@ -261,7 +276,7 @@ const CandlestickChart = ({
         )}
         
         {/* Candlesticks */}
-        {data.map((item: any, index: number) => {
+        {data.map((item: PriceData, index: number) => {
           const x = (index * chartWidth) / data.length + chartWidth / data.length / 2;
           const isGreen = item.close >= item.open;
           

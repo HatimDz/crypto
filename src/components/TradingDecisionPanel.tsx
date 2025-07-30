@@ -321,7 +321,7 @@ const aroonSignal = getSignalStrength('Aroon', 0); // Value is unused here, logi
   // Debug signals
   console.log('Signals:', { buySignals: buySignals.length, sellSignals: sellSignals.length, avgBuyStrength, avgSellStrength });
   
-  let overallDecision: { action: string; confidence: number; color: string; icon: any } = {
+  let overallDecision: { action: string; confidence: number; color: string; icon: React.ElementType } = {
     action: 'HOLD',
     confidence: 0,
     color: 'text-yellow-500',

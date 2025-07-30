@@ -6,6 +6,7 @@ import { TechnicalIndicators } from "@/components/TechnicalIndicators";
 import { TradingDecisionPanel } from "@/components/TradingDecisionPanel";
 import { TradingSignalsInterface } from "@/components/TradingSignalsInterface";
 import { HistoricalBacktester } from "@/components/HistoricalBacktester";
+import LiveTradingSignals from "@/components/LiveTradingSignals";
 import { useCryptoData } from "@/hooks/useCryptoData";
 import { Toaster } from "@/components/ui/toaster";
 import { TrendingUp, Database, Activity, BarChart3 } from "lucide-react";
@@ -39,7 +40,7 @@ const Index = () => {
             {/* Navigation Tabs */}
             <div className="mt-8">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-3">
+                <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4">
                   <TabsTrigger value="analysis" className="flex items-center gap-2">
                     <Database className="w-4 h-4" />
                     Analysis
@@ -47,6 +48,10 @@ const Index = () => {
                   <TabsTrigger value="signals" className="flex items-center gap-2">
                     <Activity className="w-4 h-4" />
                     Live Signals
+                  </TabsTrigger>
+                  <TabsTrigger value="spot_trading" className="flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Spot Trading
                   </TabsTrigger>
                   <TabsTrigger value="backtest" className="flex items-center gap-2">
                     <BarChart3 className="w-4 h-4" />
@@ -140,6 +145,10 @@ const Index = () => {
 
             <TabsContent value="signals" className="space-y-8">
               <TradingSignalsInterface />
+            </TabsContent>
+
+            <TabsContent value="spot_trading" className="space-y-8">
+              <LiveTradingSignals selectedCrypto={selectedCrypto} />
             </TabsContent>
 
             <TabsContent value="backtest" className="space-y-8">
