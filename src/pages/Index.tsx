@@ -9,7 +9,7 @@ import { HistoricalBacktester } from "@/components/HistoricalBacktester";
 import LiveTradingSignals from "@/components/LiveTradingSignals";
 import { useCryptoData } from "@/hooks/useCryptoData";
 import { Toaster } from "@/components/ui/toaster";
-import { TrendingUp, Database, Activity, BarChart3 } from "lucide-react";
+import { TrendingUp, Database, Activity, BarChart3, Target } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const Index = () => {
@@ -40,10 +40,14 @@ const Index = () => {
             {/* Navigation Tabs */}
             <div className="mt-8">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid w-full max-w-2xl mx-auto grid-cols-4">
+                <TabsList className="grid w-full max-w-3xl mx-auto grid-cols-5">
                   <TabsTrigger value="analysis" className="flex items-center gap-2">
                     <Database className="w-4 h-4" />
                     Analysis
+                  </TabsTrigger>
+                  <TabsTrigger value="trading_decision" className="flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Trading Decision
                   </TabsTrigger>
                   <TabsTrigger value="signals" className="flex items-center gap-2">
                     <Activity className="w-4 h-4" />
@@ -133,7 +137,8 @@ const Index = () => {
             
               {/* Trading Decision Analysis */}
               <div className="mt-8">
-                <TradingDecisionPanel 
+                <TradingDecisionPanel
+                  key={`trading-panel-${selectedCrypto}`} 
                   data={data || []} 
                   currentPrice={currentPrice || 0} 
                   cryptoSymbol={selectedCrypto} 
@@ -141,6 +146,34 @@ const Index = () => {
               </div>
               
               <TechnicalIndicators data={data} />
+            </TabsContent>
+
+            <TabsContent value="trading_decision" className="space-y-8">
+              {/* Crypto Selector */}
+              <CryptoSelector
+                selectedCrypto={selectedCrypto}
+                onCryptoChange={setSelectedCrypto}
+              />
+
+              {/* Error State */}
+              {error && (
+                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
+                  <div className="flex items-center gap-2 text-destructive">
+                    <Database className="w-5 h-5" />
+                    <span className="font-medium">Data Error: {error}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Trading Decision Panel */}
+              <div className="mt-8">
+                <TradingDecisionPanel
+                  key={`trading-decision-${selectedCrypto}`}
+                  data={data || []}
+                  currentPrice={currentPrice || 0}
+                  cryptoSymbol={selectedCrypto}
+                />
+              </div>
             </TabsContent>
 
             <TabsContent value="signals" className="space-y-8">

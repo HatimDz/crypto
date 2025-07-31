@@ -31,14 +31,15 @@ export interface WeightConfigHistory {
 
 // Default weight configuration
 export const DEFAULT_WEIGHTS = {
-  equilibriumAnalysis: 0.28,
-  volumeAnalysis: 0.22,
-  adx: 0.18,
-  macd: 0.14,
-  bollingerBands: 0.08,
-  stochasticRsi: 0.06,
-  rsi: 0.04,
-  cci: 0.03,
+  equilibriumAnalysis: 0.25,
+  volumeAnalysis: 0.20,
+  adx: 0.16,
+  macd: 0.12,
+  btcDominance: 0.10,
+  bollingerBands: 0.07,
+  stochasticRsi: 0.05,
+  rsi: 0.03,
+  cci: 0.02,
   movingAverages: 0.02,
   obv: 0.02,
   williamsR: 0.01

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Calendar, TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, AlertTriangle, Check, X, Download, Upload, History, BrainCircuit } from "lucide-react";
+import { Calendar, TrendingUp, TrendingDown, DollarSign, BarChart3, Activity, AlertTriangle, Check, X, Download, Upload, History, BrainCircuit, ChevronDown, ChevronRight } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import WeightConfigManager, { WeightConfiguration } from '../utils/weightConfig';
@@ -40,6 +40,8 @@ const runAdaptiveLearningBacktest = async (
   let entryConfidence = 0;
   let quantity = 0;
   let entryReasoning: string[] = [];
+  let entryIndicatorValues: IndicatorSnapshot = {};
+  let entryWeights: { [key: string]: number } = {};
 
   let maxCapital = initialCapital;
   let maxDrawdown = 0;
@@ -80,6 +82,9 @@ const runAdaptiveLearningBacktest = async (
             quantity = capital / entryPrice;
             capital = 0;
             entryReasoning = signal.reasoning;
+            // Capture exact features and weights at entry time
+            entryIndicatorValues = { ...signal.indicatorValues };
+            entryWeights = { ...weights };
       }
     }
     else if (position === 'LONG' && signal.action === 'SELL') {
@@ -113,6 +118,23 @@ const runAdaptiveLearningBacktest = async (
         // The total probability of the weights is normalized to 1.
         TechnicalAnalysis.normalizeWeights(weights);
 
+        // Calculate detailed features at exit
+        const exitSignal = TechnicalAnalysis.generateSignal(data, i, enabledIndicators, weights);
+        const exitFeatureContributions = TechnicalAnalysis.calculateFeatureContributions(
+          exitSignal.indicatorValues,
+          enabledIndicators,
+          weights,
+          'SELL'
+        );
+        
+        // Get entry features that were stored
+        const entryFeatureContributions = TechnicalAnalysis.calculateFeatureContributions(
+          entryIndicatorValues,
+          enabledIndicators,
+          entryWeights,
+          'BUY'
+        );
+
         trades.push({
           entryDate,
           exitDate: currentData.date,
@@ -124,8 +146,31 @@ const runAdaptiveLearningBacktest = async (
           profitPercent,
           confidence: entryConfidence,
           holdingPeriod: Math.floor((new Date(currentData.date).getTime() - new Date(entryDate).getTime()) / (1000 * 60 * 60 * 24)),
-          indicatorValues: signal.indicatorValues,
+          indicatorValues: signal.indicatorValues, // Legacy compatibility
           reasoning: entryReasoning,
+          // Enhanced feature tracking
+          entryFeatures: entryIndicatorValues,
+          exitFeatures: exitSignal.indicatorValues,
+          entryConfidence: entryConfidence,
+          exitConfidence: exitSignal.confidence,
+          entryWeights: { ...entryWeights },
+          exitWeights: { ...weights },
+          featureContributions: {
+            entry: entryFeatureContributions,
+            exit: exitFeatureContributions
+          },
+          marketConditions: {
+            entry: {
+              btcDominance: entryIndicatorValues.btcDominance?.value,
+              marketSentiment: entryIndicatorValues.btcDominance?.trend,
+              volumeProfile: entryIndicatorValues.volume ? (entryIndicatorValues.volume.ratio > 1.2 ? 'HIGH' : 'NORMAL') : 'UNKNOWN'
+            },
+            exit: {
+              btcDominance: exitSignal.indicatorValues.btcDominance?.value,
+              marketSentiment: exitSignal.indicatorValues.btcDominance?.trend,
+              volumeProfile: exitSignal.indicatorValues.volume ? (exitSignal.indicatorValues.volume.ratio > 1.2 ? 'HIGH' : 'NORMAL') : 'UNKNOWN'
+            }
+          }
         });
 
         capital = quantity * exitPrice;
@@ -219,22 +264,153 @@ export const HistoricalBacktester: React.FC = () => {
     eq30: true,
     eq60: true,
     eq90: true,
+    btcDominance: true,
   });
   const [showWeightActions, setShowWeightActions] = useState(false);
   const [configName, setConfigName] = useState('');
   const [savedConfigs, setSavedConfigs] = useState<WeightConfiguration[]>([]);
+  const [expandedTrade, setExpandedTrade] = useState<number | null>(null);
 
   const symbols = ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'ADAUSDT', 'SOLUSDT'];
+  
+  // Helper to convert symbol format for TradingDecisionPanel compatibility
+  const getBaseSymbol = (fullSymbol: string): string => {
+    return fullSymbol.replace('USDT', ''); // BTCUSDT -> BTC, SOLUSDT -> SOL
+  };
+
+  // Helper to display detailed trade features
+  const renderTradeFeatures = (trade: BacktestTrade) => {
+    if (!trade.entryFeatures || !trade.featureContributions) {
+      return <div className="text-sm text-gray-500">Legacy trade - detailed features not available</div>;
+    }
+
+    return (
+      <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Entry Features */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-green-600 flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" />
+              BUY Decision Features (Confidence: {trade.entryConfidence.toFixed(1)}%)
+            </h4>
+            <div className="text-xs space-y-1">
+              <div className="text-gray-600">
+                📅 {new Date(trade.entryDate).toLocaleString()}
+              </div>
+              <div className="text-gray-600">
+                💰 Entry Price: ${trade.entryPrice.toLocaleString()}
+              </div>
+              {trade.marketConditions?.entry && (
+                <div className="space-y-1 mt-2">
+                  {trade.marketConditions.entry.btcDominance && (
+                    <div className="text-blue-600">
+                      🪙 BTC Dominance: {trade.marketConditions.entry.btcDominance.toFixed(1)}% ({trade.marketConditions.entry.marketSentiment})
+                      {trade.entryFeatures.btcDominance && (
+                        <div className="text-xs text-green-600 ml-2">
+                          ✅ API Data: {trade.entryFeatures.btcDominance.value.toFixed(1)}% | Change: {trade.entryFeatures.btcDominance.change24h.toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-purple-600">
+                    📊 Volume: {trade.marketConditions.entry.volumeProfile}
+                    {trade.entryFeatures.volume && (
+                      <div className="text-xs text-green-600 ml-2">
+                        ✅ Real Volume: {(trade.entryFeatures.volume.ratio * 100).toFixed(0)}% of average
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="space-y-1">
+              {Object.entries(trade.featureContributions.entry).map(([feature, data]) => (
+                <div key={`entry-${feature}`} className="text-xs flex justify-between items-center py-1 px-2 bg-white rounded">
+                  <div className="flex-1">
+                    <div className="font-medium text-gray-700">{feature.toUpperCase()}</div>
+                    <div className="text-gray-500">{data.reasoning}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-green-600 font-medium">+{data.contribution.toFixed(1)}</div>
+                    <div className="text-gray-400">{(data.weight * 100).toFixed(0)}% weight</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Exit Features */}
+          <div className="space-y-2">
+            <h4 className="font-semibold text-red-600 flex items-center gap-2">
+              <TrendingDown className="w-4 h-4" />
+              SELL Decision Features (Confidence: {trade.exitConfidence?.toFixed(1) || 'N/A'}%)
+            </h4>
+            <div className="text-xs space-y-1">
+              <div className="text-gray-600">
+                📅 {new Date(trade.exitDate).toLocaleString()}
+              </div>
+              <div className="text-gray-600">
+                💰 Exit Price: ${trade.exitPrice.toLocaleString()}
+              </div>
+              <div className={`font-medium ${trade.profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                📈 P&L: ${trade.profit.toFixed(0)} ({trade.profitPercent.toFixed(1)}%)
+              </div>
+              {trade.marketConditions?.exit && (
+                <div className="space-y-1 mt-2">
+                  {trade.marketConditions.exit.btcDominance && (
+                    <div className="text-blue-600">
+                      🪙 BTC Dominance: {trade.marketConditions.exit.btcDominance.toFixed(1)}% ({trade.marketConditions.exit.marketSentiment})
+                      {trade.exitFeatures?.btcDominance && (
+                        <div className="text-xs text-green-600 ml-2">
+                          ✅ API Data: {trade.exitFeatures.btcDominance.value.toFixed(1)}% | Change: {trade.exitFeatures.btcDominance.change24h.toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-purple-600">
+                    📊 Volume: {trade.marketConditions.exit.volumeProfile}
+                    {trade.exitFeatures?.volume && (
+                      <div className="text-xs text-green-600 ml-2">
+                        ✅ Real Volume: {(trade.exitFeatures.volume.ratio * 100).toFixed(0)}% of average
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            {trade.featureContributions.exit && (
+              <div className="space-y-1">
+                {Object.entries(trade.featureContributions.exit).map(([feature, data]) => (
+                  <div key={`exit-${feature}`} className="text-xs flex justify-between items-center py-1 px-2 bg-white rounded">
+                    <div className="flex-1">
+                      <div className="font-medium text-gray-700">{feature.toUpperCase()}</div>
+                      <div className="text-gray-500">{data.reasoning}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-red-600 font-medium">+{data.contribution.toFixed(1)}</div>
+                      <div className="text-gray-400">{(data.weight * 100).toFixed(0)}% weight</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   useEffect(() => {
-    setSavedConfigs(WeightConfigManager.getAllConfigurations(selectedSymbol));
+    const baseSymbol = getBaseSymbol(selectedSymbol);
+    setSavedConfigs(WeightConfigManager.getAllConfigurations(baseSymbol));
     (window as Window & typeof globalThis & { WeightConfigManager: typeof WeightConfigManager }).WeightConfigManager = WeightConfigManager;
-    (window as Window & typeof globalThis & { currentSymbol: string }).currentSymbol = selectedSymbol;
-    const activeConfig = WeightConfigManager.getActiveConfiguration(selectedSymbol);
+    (window as Window & typeof globalThis & { currentSymbol: string }).currentSymbol = baseSymbol;
+    const activeConfig = WeightConfigManager.getActiveConfiguration(baseSymbol);
     if (activeConfig) {
-      console.log(`Active configuration for ${selectedSymbol}:`, activeConfig.name);
+      console.log(`🔧 Active configuration for ${baseSymbol}:`, activeConfig.name);
+      console.log(`🔗 Compatible with TradingDecisionPanel symbol format`);
     } else {
-      console.log(`Using default weights for ${selectedSymbol}`);
+      console.log(`⚠️ Using default weights for ${baseSymbol}`);
     }
   }, [selectedSymbol]);
 
@@ -253,6 +429,25 @@ export const HistoricalBacktester: React.FC = () => {
 
       if (diffDays < 31) {
         throw new Error('Please select a date range of at least 31 days for a meaningful backtest.');
+      }
+
+      // Pre-fetch BTC dominance data for accurate backtesting
+      console.log('🔄 Pre-fetching BTC dominance data for accurate backtesting...');
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Fetch dominance data for key dates (every 7 days to avoid rate limits)
+      const dominancePromises = [];
+      for (let i = 0; i <= daysDiff; i += 7) {
+        const currentDate = new Date(start.getTime() + (i * 24 * 60 * 60 * 1000));
+        const dateStr = currentDate.toISOString();
+        dominancePromises.push(TechnicalAnalysis.fetchBTCDominanceFromAPI(dateStr));
+      }
+      
+      try {
+        await Promise.all(dominancePromises);
+        console.log('✅ BTC dominance data pre-fetched successfully');
+      } catch (error) {
+        console.warn('⚠️ Some BTC dominance data could not be fetched:', error);
       }
 
       const data = await fetchHistoricalData(selectedSymbol, start, end);
@@ -305,7 +500,7 @@ export const HistoricalBacktester: React.FC = () => {
           endDate
         },
         enabledIndicatorsList,
-        selectedSymbol
+        getBaseSymbol(selectedSymbol) // Save with base symbol (BTC, SOL) for TradingDecisionPanel compatibility
       );
       
       WeightConfigManager.saveConfiguration(config);
@@ -313,12 +508,21 @@ export const HistoricalBacktester: React.FC = () => {
       setSavedConfigs(WeightConfigManager.getAllConfigurations(selectedSymbol));
       setShowWeightActions(false);
       
-      alert(`Adaptive weight configuration "${configName}" has been confirmed and is now active!`);
+      // Enhanced logging for TradingDecisionPanel integration
+      console.log(`✅ BACKTEST WEIGHTS SAVED FOR ${selectedSymbol}:`);
+      console.log(`📊 Config Name: ${config.name}`);
+      console.log(`📈 Expected Profit: ${report.totalReturn}%`);
+      console.log(`🎯 Win Rate: ${report.winRate}%`);
+      console.log(`⚖️ Weights:`, weights);
+      console.log(`🔄 TradingDecisionPanel will now use these optimized weights!`);
+
+      alert(`✅ Adaptive weight configuration "${configName}" has been confirmed and is now active!\n\n📊 Performance:\n• Expected Profit: ${report.totalReturn}%\n• Win Rate: ${report.winRate}%\n• Sharpe Ratio: ${report.sharpeRatio}\n\n🔄 TradingDecisionPanel will now use these optimized weights for ${selectedSymbol}!`);
     }
   };
   
   const handleResetWeights = () => {
-    WeightConfigManager.resetToDefault(selectedSymbol);
+    const baseSymbol = getBaseSymbol(selectedSymbol);
+    WeightConfigManager.resetToDefault(baseSymbol);
     setAdaptiveLearningResult(null);
     setShowWeightActions(false);
     setConfigName('');
@@ -511,16 +715,43 @@ export const HistoricalBacktester: React.FC = () => {
             </TableHeader>
             <TableBody>
               {result.trades.map((trade, index) => (
-                <TableRow key={index}>
-                  <TableCell>{trade.entryDate}</TableCell>
-                  <TableCell>{trade.exitDate}</TableCell>
-                  <TableCell>{trade.entryPrice.toFixed(2)}</TableCell>
-                  <TableCell>{trade.exitPrice.toFixed(2)}</TableCell>
-                  <TableCell className={trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
-                    {trade.profit.toFixed(2)} ({trade.profitPercent.toFixed(2)}%)
-                  </TableCell>
-                  <TableCell>{trade.confidence.toFixed(2)}%</TableCell>
-                </TableRow>
+                <React.Fragment key={index}>
+                  <TableRow 
+                    className="cursor-pointer hover:bg-gray-50" 
+                    onClick={() => setExpandedTrade(expandedTrade === index ? null : index)}
+                  >
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {expandedTrade === index ? 
+                          <ChevronDown className="w-4 h-4" /> : 
+                          <ChevronRight className="w-4 h-4" />
+                        }
+                        {new Date(trade.entryDate).toLocaleDateString()}
+                      </div>
+                    </TableCell>
+                    <TableCell>{new Date(trade.exitDate).toLocaleDateString()}</TableCell>
+                    <TableCell>${trade.entryPrice.toFixed(2)}</TableCell>
+                    <TableCell>${trade.exitPrice.toFixed(2)}</TableCell>
+                    <TableCell className={trade.profit >= 0 ? 'text-green-500' : 'text-red-500'}>
+                      ${trade.profit.toFixed(0)} ({trade.profitPercent.toFixed(1)}%)
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span>{trade.confidence.toFixed(1)}%</span>
+                        {trade.entryFeatures && (
+                          <span className="text-xs text-blue-600">📊 Enhanced</span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                  {expandedTrade === index && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="p-0">
+                        {renderTradeFeatures(trade)}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
               ))}
             </TableBody>
           </Table>
